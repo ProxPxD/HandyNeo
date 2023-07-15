@@ -1,18 +1,14 @@
 from __future__ import annotations
 
-from abc import abstractmethod
-from collections import namedtuple
 from dataclasses import dataclass, field
 from itertools import product
 from typing import Callable, Iterable, Type, Tuple
 
 from py2neo import Graph, Relationship, Node
 
-from src.Exceptions import MathematicBreakDownException
 from src.utils import save_iterabilize, DictClass
 
 Graph.create_all = lambda self, *subgraphs: [self.create(subgraph) for subgraph in subgraphs] is None and None
-import operator as op
 
 
 ##################
@@ -58,7 +54,6 @@ class HasName:
         super().__init__(*args, **kwargs)
         self._name: str = name
 
-    @abstractmethod
     @property
     def name(self) -> str:
         return self._name
@@ -123,8 +118,8 @@ class NodeVar:
 
 @dataclass
 class NodeVars(DictClass):
-    parents: NodeVar  = field(default=NodeVar(None, False))
-    children: NodeVar = field(default=NodeVar(None, False))
+    parents: NodeVar  = field(default_factory=lambda: NodeVar(None, False))
+    children: NodeVar = field(default_factory=lambda: NodeVar(None, False))
 
 
 @dataclass
@@ -213,12 +208,25 @@ class N(HasName):
     def get_node(self) -> Node:
         return self.node
 
+    @property
+    def labels(self) -> set[str]:
+        return self.node.labels
+
+    def get_labes(self) -> set[str]:
+        return self.labels
+
     def __call__(self, name: str, *labels: str | N, **kwargs) -> N:
         name = name or '-'.join(map(lambda l: l if isinstance(l, str) else l.name, labels))
         n = N(name=name, relationer=self.relationer, **kwargs)
         self.relationer(self, n, *labels, **kwargs)
         self.children.append(n)
         return n
+
+    def __getitem__(self, item):
+        return self.node[item]
+
+    def __setitem__(self, key, value):
+        self.node[key] = value
 
     def __repr__(self):
         return f'N-{self.name}'
