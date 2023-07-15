@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from itertools import product
-from typing import Callable, Iterable, Type, Tuple
+from typing import Callable, Iterable, Type, Tuple, Any
 
+from more_itertools import bucket
 from py2neo import Graph, Relationship, Node
 
-from src.utils import save_iterabilize, DictClass
+from src.utils import save_iterabilize, DictClass, col_to_str
 
 Graph.create_all = lambda self, *subgraphs: [self.create(subgraph) for subgraph in subgraphs] is None and None
 
@@ -198,8 +199,19 @@ class N(HasName):
         self.relationer = relationer
         setattr(NN, name, self)
 
-        if (labels or named_nabels) and self.relationer:
-            self.relationer(None, self, *labels, **named_nabels)
+        bucketed = bucket(named_nabels, key=lambda nl: NabelConfig.map_to_contained_key(nl) is None)
+        relationer_nabels = {key: named_nabels[key] for key in bucketed[False]}
+        node_nabels = {key: named_nabels[key] for key in bucketed[True]}
+
+        self.add_kwargs(node_nabels)
+        if relationer:
+            self.relationer(None, self, *labels, **relationer_nabels)
+        else:
+            self.node.update_labels(list(col_to_str(labels)))
+
+    def add_kwargs(self, kwargs: dict) -> None:
+        for key, val in kwargs.items():
+            self.node[key] = val
 
     @property
     def name(self) -> str:
@@ -222,11 +234,14 @@ class N(HasName):
         self.children.append(n)
         return n
 
-    def __getitem__(self, item):
+    def __getitem__(self, item) -> Any:
         return self.node[item]
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key, value) -> None:
         self.node[key] = value
+
+    def keys(self) -> Iterable:
+        return self.node.keys()
 
     def __repr__(self):
         return f'N-{self.name}'

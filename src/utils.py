@@ -40,13 +40,13 @@ class DictClass:
         return self.__dict__.__setitem__(key, value)
 
     dict: Callable[[], dict] = asdict
-    values: Callable[[], Any] = lambda self: dict(self).values()
-    keys: Callable[[], Any] = lambda self: dict(self).keys()
-    items: Callable[[], Any] = lambda self: dict(self).items()
+    values: Callable[[], Any] = lambda self: self.dict().values()
+    keys: Callable[[], Any] = lambda self: self.dict().keys()
+    items: Callable[[], Any] = lambda self: self.dict().items()
 
     @classmethod
     def map_to_contained_key(cls, k) -> str | None:
-        return next(filter(k.__contain__, cls.keys(cls)), None)
+        return next(filter(k.__contains__, cls().keys()), None)
 
 
 ############
