@@ -44,8 +44,7 @@ class AbstractTest(unittest.TestCase, abc.ABC):
         if not self.get_method_name().startswith('test_'):
             return
         super().tearDown()
-        result = self.defaultTestResult()
-        self.feed_necessary(result)
+        result = self.get_test_result()
 
         is_error = any(test == self for test, text in result.errors)
         is_failure = any(test == self for test, text in result.failures)
@@ -67,10 +66,20 @@ class AbstractTest(unittest.TestCase, abc.ABC):
         status = self.colorize(status)
         print(f'{" "*padding}{status}')
 
-    def feed_necessary(self, result):
+    def get_test_result(self):
+        if hasattr(self._outcome, 'errors'):
+            result = self._get_legacy_test_results()
+        else:  # Python 3.11+
+            result = self._outcome.result
+        return result
+
+    def _get_legacy_test_results(self):
+        ''' Python 3.4 - 3.10  (These two methods have no side effects) '''
+        result = self.defaultTestResult()
         self._feedErrorsToResult(result, self._outcome.errors)
         for test, reason in self._outcome.skipped:
             self._addSkip(result, test, reason)
+        return result
 
     def colorize(self, to_color: str):
         match to_color:
@@ -99,6 +108,10 @@ class AbstractTest(unittest.TestCase, abc.ABC):
         total_run = total - skipped
         passed = total_run - failed
 
+        if total == 0:
+            print('There are no tests')
+            return
+
         if short:
             ef_division = f'{failure}F, {errors}E' if errors else f'{failed}F'
             statistics_str = f'({ef_division}, {passed}P)/{total_run}'
@@ -119,11 +132,6 @@ class AbstractTest(unittest.TestCase, abc.ABC):
     def run(self, result: unittest.result.TestResult | None = ...) -> unittest.result.TestResult | None:
         self.currentResult = result
         unittest.TestCase.run(self, result)
-
-    @classmethod
-    @abc.abstractmethod
-    def _get_test_name(cls) -> str:
-        return 'unnamed'
 
     def get_method_name(self) -> str:
         return self.id().split('.')[-1]

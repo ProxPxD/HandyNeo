@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Iterable, Type, Callable, Any
+from typing import Iterable, Type, Callable, Any, Generator
+
+from py2neo import Node
 
 
 ###########
@@ -50,3 +52,14 @@ class DictClass:
 ############
 # Concrete #
 ############
+
+def col_to_str(col):
+    if isinstance(col, (tuple, list, Generator, map, filter)):
+        return (col_to_str(c) for c in col)
+    if isinstance(col, str):
+        return col
+    if hasattr(col, 'name'):
+        return col.name
+    if isinstance(col, Node):
+        return col['name']
+    return str(col)
