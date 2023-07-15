@@ -4,7 +4,7 @@ from more_itertools import distinct_combinations, flatten
 from parameterized import parameterized
 from py2neo import Node
 
-from src.handyneo import Nabels, N
+from src.handyneo import Nabels, N, NN
 from src.utils import col_to_str
 from tests.abstractTest import AbstractTest
 
@@ -47,6 +47,7 @@ class SimpleNodeTest(AbstractTest):
                     self.assertEqual(v, n.node[k])
                     self.assertIn(k, n.keys())
                     self.assertEqual(v, n[k])
+                self.assertIn(n, NN.vals())
             except Exception:
                 self.fail('Unexpected exception')
         return test
