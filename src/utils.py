@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Iterable, Type, Callable, Any, Generator
+from typing import Iterable, Type, Callable, Any, Generator, Collection
 
 from py2neo import Node
 
@@ -11,7 +11,7 @@ from py2neo import Node
 ###########
 
 
-def save_iterabilize(iterable: Iterable | None, default: Type | Callable = list) -> Iterable:
+def save_iterabilize(iterable: Iterable | None, default: Type | Callable = list) -> Iterable | Collection:
     iterable: Iterable = iterable or default()
     if not isinstance(iterable, Iterable) or isinstance(iterable, str):
         if isinstance(iterable, str):
