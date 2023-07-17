@@ -11,11 +11,11 @@ from py2neo import Node
 ###########
 
 
-def save_iterabilize(iterable: Iterable | None, default: Type | Callable = list) -> Iterable | Collection:
+def save_iterabilize(iterable: Iterable | None, default: Type | Callable = list) -> Iterable | Collection | list | tuple:
     iterable: Iterable = iterable or default()
-    if not isinstance(iterable, Iterable) or isinstance(iterable, str):
-        if isinstance(iterable, str):
-            iterable = (iterable, )
+    if isinstance(iterable, (str, dict)):
+        iterable = (iterable, )
+    if not isinstance(iterable, default):
         iterable = default(iterable)
     return iterable
 

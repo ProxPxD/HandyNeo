@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import operator as op
 from dataclasses import dataclass, field
+from functools import reduce
 from itertools import product
 from typing import Callable, Iterable, Type, Tuple, Any
 
-from more_itertools import bucket
+from more_itertools import bucket, flatten
 from py2neo import Graph, Relationship, Node
 
 from src.utils import save_iterabilize, DictClass, col_to_str
+
+
 
 Graph.create_all = lambda self, *subgraphs: [self.create(subgraph) for subgraph in subgraphs] is None and None
 
@@ -20,9 +24,10 @@ Graph.create_all = lambda self, *subgraphs: [self.create(subgraph) for subgraph 
 class Strings:
     reversed = 'reversed'
     name = 'name'
-    parents = 'parents'
     children = 'children'
+    parents = 'parents'
     unnamed = 'unnamed'
+    kwargs = 'kwargs'
     rel = 'rel'
     name_as_label = 'name_as_label'
     labels_inherit = 'labels_inherit'
@@ -44,6 +49,15 @@ class D:
     @classmethod
     def pure_vals(cls, to: Callable = iter):
         return to((v for val in map(cls._map_func, cls.vals()) for v in (val if isinstance(val, list) else [val])))
+
+    @classmethod
+    def get(cls, key, default=None):
+        return cls.dir().get(key, default)
+
+    @classmethod
+    def clean_children(cls):
+        for val in cls.vals():
+            val.children = []
 
 
 class NN(D): pass
@@ -72,7 +86,7 @@ class R(HasName):
 
     @property
     def name(self) -> str:
-        return str(type(self.rel))
+        return self._name
 
     def get_rel(self) -> Type[Relationship]:
         return self.rel
@@ -81,7 +95,7 @@ class R(HasName):
         return self.children
 
     def __call__(self, *args, **kwargs) -> Relationship:
-        r = self.rel(*args, **kwargs)
+        r = self.rel(*tuple(map(lambda a: a.node if isinstance(a, N) else a, args)), **kwargs)
         self.children.append(r)
         return r
 
@@ -108,8 +122,8 @@ class NodeVar:
     )
 
     def set_first_from(self, args: tuple) -> tuple:
-        if not self.is_constant:
-            self.vals = args[0]
+        if args and not self.is_constant:
+            self.vals = save_iterabilize(args[0])
             return args[1:]
         return args
 
@@ -121,6 +135,28 @@ class NodeVar:
 class NodeVars(DictClass):
     parents: NodeVar  = field(default_factory=lambda: NodeVar(None, False))
     children: NodeVar = field(default_factory=lambda: NodeVar(None, False))
+
+
+class Filterer:
+
+    @classmethod
+    def filter_suffix(cls, to_filters: Iterable[str], prefix: str, kwargs: dict | bool = None) -> Iterable[str] | dict[str, Any]:
+        if kwargs is True:
+            kwargs = to_filters
+        with_prefixes = filter(lambda elem: elem.endswith(prefix), to_filters)
+        return {k:kwargs[k] for k in with_prefixes} if kwargs is not None else with_prefixes
+
+    @classmethod
+    def filter_rel(cls, to_filters: Iterable[str], kwargs: dict | bool = None) -> Iterable[str]| dict[str, Any]:
+        return cls.filter_suffix(to_filters, S.rel, kwargs)
+
+    @classmethod
+    def filter_name_as_labels(cls, to_filters: Iterable[str], kwargs: dict | bool = None) -> Iterable[str] | dict[str, Any]:
+        return cls.filter_suffix(to_filters, S.name_as_label, kwargs)
+
+    @classmethod
+    def filter_labels_inherit(cls, to_filters: Iterable[str], kwargs: dict | bool = None) -> Iterable[str] | dict[str, Any]:
+        return cls.filter_suffix(to_filters, S.labels_inherit, kwargs)
 
 
 @dataclass
@@ -138,48 +174,56 @@ class NabelConfig(DictClass):
                 params[default_key] = default_value
         return NabelConfig(**params)
 
+    def __bool__(self):
+        return reduce(op.or_, map(bool, (self.rel, self.name_as_label, self.labels_inherit)), False)
+
 
 class Relationer:
     '''
         [NAME]_rel, [NAME]_labels_inherit, [NAME]_name_as_label
     '''
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__()
         self._node_vars = NodeVars()
+        for key in (S.rel, S.labels_inherit, S.name_as_label):
+            if key in kwargs:
+                kwargs[f'{S.parents}_{key}'] = kwargs[key]
+                del kwargs[key]
         self._nabels_configs: dict[str, NabelConfig] = {
-            S.parents: NabelConfig.make_from(S.unnamed, kwargs, labels_inherit=True),
+            S.parents: NabelConfig.make_from(S.parents, kwargs, labels_inherit=True),
             S.unnamed: NabelConfig.make_from(S.unnamed, kwargs),
         }
-        truncated_keys = map(NabelConfig.map_to_contained_key, kwargs.keys())
-        nonnone_keys = filter(bool, truncated_keys)
-        unique_keys = set(nonnone_keys)
+        truncated_keys = (key.removesuffix(f'_{NabelConfig.map_to_contained_key(key)}') for key in kwargs.keys() if NabelConfig.map_to_contained_key(key) is not None and not any((key.startswith(prefix) for prefix in (S.parents, S.unnamed))))
+        unique_keys = set(truncated_keys)
         for unique_key in unique_keys:
             self._nabels_configs[unique_key] = NabelConfig.make_from(unique_key, kwargs)
 
     def __call__(self, *labels, **named_nabels: Nabel):
+        labels = list(map(lambda l: to_node(l, 2), labels))
         labels = self._node_vars.parents.set_first_from(labels)
         labels = self._node_vars.children.set_first_from(labels)
         self._rel(self._node_vars.parents.vals, S.parents)
+        labels = list(l for label in filter(bool, labels) for l in (label if isinstance(label, (tuple, list)) else (label, )))
         self._rel(labels, S.unnamed)
-        for nabels_type, nabels in named_nabels:
-            self._rel(nabels_type, nabels_type)
+        for nabels_type, nabels in named_nabels.items():
+            self._rel(save_iterabilize(nabels), nabels_type)
         for node_var in self._node_vars.values():
-            if not node_var.is_constant:
-                node_var.vals = None
+            if not node_var['is_constant']:
+                node_var['vals'] = None
 
-    def _rel(self, from_nabels: Nabels, nabels_type: str):
-        to_nabels = self._node_vars.children.vals
+    def _rel(self, from_nabels: Iterable[Node], nabels_type: str):
+        to_nabels: Nabels = self._node_vars.children.vals
         config = self._nabels_configs[nabels_type]
         rel_args = tuple(reversed((from_nabels, to_nabels))) if config.reversed else from_nabels, to_nabels
-        from_nabel: N
-        to_nabel: N
+        if not bool:
+            return
         for from_nabel, to_nabel in product(*rel_args):
             if config.rel:
                 config.rel(from_nabel, to_nabel)
             if config.name_as_label:
-                to_nabel.node.update_labels(from_nabel.name)
+                to_nabel.update_labels(from_nabel[S.name])
             if config.labels_inherit:
-                to_nabel.node.update_labels(from_nabel.node.labels)
+                to_nabel.update_labels(from_nabel.labels)
 
     def __mul__(self, other: N_potcol):
         for node_var_type, node_var in self._node_vars.items():
@@ -191,7 +235,7 @@ class Relationer:
         return self
 
 
-class N(HasName):
+class N(HasName, dict):  # TODO dict was added for complience with save_iterazable, check if needed
     def __init__(self, name: str, *labels: Nabel, relationer: Relationer = None, **named_nabels):
         super().__init__()
         self.node = Node(name=name)
@@ -240,11 +284,17 @@ class N(HasName):
     def __setitem__(self, key, value) -> None:
         self.node[key] = value
 
+    def __repr__(self):
+        return f'N-{self.name}'
+
     def keys(self) -> Iterable:
         return self.node.keys()
 
-    def __repr__(self):
-        return f'N-{self.name}'
+
+def to_node(elem, n):
+    if n == 0:
+        return elem
+    return elem.node if isinstance(elem, N) else list(map(lambda e: to_node(e, n-1), elem)) if isinstance(elem, (list, tuple)) else elem
 
 RR._map_func = R.get_children
 NN._map_func = N.get_node
