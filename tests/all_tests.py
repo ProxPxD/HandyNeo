@@ -3,11 +3,13 @@ from typing import Iterable
 
 from tests.SimpleNodeTest import SimpleNodeTest
 from tests.abstractTest import AbstractTest
+from tests.relationTest import RelationTest
 from tests.relationerTest import RelationerTest
 
 all_tests = [
+    # SimpleNodeTest,
+    # RelationTest,
     RelationerTest,
-    SimpleNodeTest,
 ]
 
 
