@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 import operator as op
+import random
 from dataclasses import dataclass, field
 from functools import reduce
 from itertools import product
 from typing import Callable, Iterable, Type, Tuple, Any
 
-from more_itertools import bucket, flatten
+from more_itertools import bucket
 from py2neo import Graph, Relationship, Node
 
 from src.utils import save_iterabilize, DictClass, col_to_str
-
-
 
 Graph.create_all = lambda self, *subgraphs: [self.create(subgraph) for subgraph in subgraphs] is None and None
 
@@ -43,6 +42,10 @@ class D:
         return {name: val for name, val in cls.__dict__.items() if not name.startswith('_')}
 
     @classmethod
+    def keys(cls):
+        return cls.dir().keys()
+
+    @classmethod
     def vals(cls):
         return cls.dir().values()
 
@@ -59,7 +62,19 @@ class D:
         for val in cls.vals():
             val.children = []
 
+    @classmethod
+    def is_name_free(cls, name: str) -> bool:
+        return name not in cls.dir()
 
+    @classmethod
+    def get_free_name(cls, name: str = '') -> str:
+        new_name = name
+        while not cls.is_name_free(new_name):
+            new_name = name + f'--{random.random()}'
+        return new_name
+
+
+# TODO: think if should store by name or rather by some id
 class NN(D): pass
 class RR(D): pass
 
@@ -78,11 +93,17 @@ class HasName:
 
 
 class R(HasName):
-    def __init__(self, name: str):
-        super().__init__(name=name)
-        self.rel: Type[Relationship] = Relationship.type(name)
+    def __init__(self, name: str | Relationship, change_name=False):
+        rel_name = self.extract_name_from_relationship(name) if str(name).startswith("<class 'py2neo.data.") else name if isinstance(name, str) else None
+        if not change_name and not RR.is_name_free(rel_name):
+            raise ValueError
+        elif change_name:
+            rel_name = RR.get_free_name(rel_name)
+
+        super().__init__(name=rel_name)
+        self.rel: Type[Relationship] = Relationship.type(rel_name)
         self.children: list[Relationship] = []
-        setattr(RR, name, self)
+        setattr(RR, rel_name, self)
 
     @property
     def name(self) -> str:
@@ -93,6 +114,10 @@ class R(HasName):
 
     def get_children(self) -> list[Relationship]:
         return self.children
+
+    @classmethod
+    def extract_name_from_relationship(cls, r: Relationship) -> str:
+        return str(r).removeprefix("<class 'py2neo.data.").removesuffix("'>")
 
     def __call__(self, *args, **kwargs) -> Relationship:
         r = self.rel(*tuple(map(lambda a: a.node if isinstance(a, N) else a, args)), **kwargs)
@@ -167,8 +192,10 @@ class NabelConfig(DictClass):
     reversed: bool = field(default=False)
 
     @classmethod
-    def make_from(cls, name: str, kwargs: dict, **defaults):
+    def make_from(cls, name: str, kwargs: dict, change_name=False, **defaults):
         params = {param_name.removeprefix(f'{name}_'): param_value for param_name, param_value in kwargs.items() if name in param_name}
+        if S.rel in params and not isinstance(params[S.rel], (R, type(None))):
+            params[S.rel] = R(params[S.rel], change_name=change_name)
         for default_key, default_value in defaults.items():
             if default_key not in params:
                 params[default_key] = default_value
@@ -182,7 +209,7 @@ class Relationer:
     '''
         [NAME]_rel, [NAME]_labels_inherit, [NAME]_name_as_label
     '''
-    def __init__(self, **kwargs):
+    def __init__(self, change_name=False, **kwargs):
         super().__init__()
         self._node_vars = NodeVars()
         for key in (S.rel, S.labels_inherit, S.name_as_label):
@@ -190,13 +217,13 @@ class Relationer:
                 kwargs[f'{S.parents}_{key}'] = kwargs[key]
                 del kwargs[key]
         self._nabels_configs: dict[str, NabelConfig] = {
-            S.parents: NabelConfig.make_from(S.parents, kwargs, labels_inherit=True),
-            S.unnamed: NabelConfig.make_from(S.unnamed, kwargs),
+            S.parents: NabelConfig.make_from(S.parents, kwargs, change_name=change_name, labels_inherit=True),
+            S.unnamed: NabelConfig.make_from(S.unnamed, kwargs, change_name=change_name),
         }
         truncated_keys = (key.removesuffix(f'_{NabelConfig.map_to_contained_key(key)}') for key in kwargs.keys() if NabelConfig.map_to_contained_key(key) is not None and not any((key.startswith(prefix) for prefix in (S.parents, S.unnamed))))
         unique_keys = set(truncated_keys)
         for unique_key in unique_keys:
-            self._nabels_configs[unique_key] = NabelConfig.make_from(unique_key, kwargs)
+            self._nabels_configs[unique_key] = NabelConfig.make_from(unique_key, kwargs, change_name=change_name)
 
     def __call__(self, *labels, **named_nabels: Nabel):
         labels = list(map(lambda l: to_node(l, 2), labels))
@@ -211,6 +238,12 @@ class Relationer:
             if not node_var['is_constant']:
                 node_var['vals'] = None
 
+    def get_rel_confs(self, name: str) -> NabelConfig:
+        return self._nabels_configs[name]
+
+    def get_rel(self, name: str) -> R:
+        return self.get_rel_confs(name).rel
+
     def _rel(self, from_nabels: Iterable[Node], nabels_type: str):
         to_nabels: Nabels = self._node_vars.children.vals
         config = self._nabels_configs[nabels_type]
@@ -221,7 +254,7 @@ class Relationer:
             if config.rel:
                 config.rel(from_nabel, to_nabel)
             if config.name_as_label:
-                to_nabel.update_labels(from_nabel[S.name])
+                to_nabel.update_labels([from_nabel[S.name]])
             if config.labels_inherit:
                 to_nabel.update_labels(from_nabel.labels)
 
@@ -295,6 +328,10 @@ def to_node(elem, n):
     if n == 0:
         return elem
     return elem.node if isinstance(elem, N) else list(map(lambda e: to_node(e, n-1), elem)) if isinstance(elem, (list, tuple)) else elem
+
+
+def to_name(elem):
+    return elem.name if isinstance(elem, N) else elem[S.name] if isinstance(elem, Node) else None
 
 RR._map_func = R.get_children
 NN._map_func = N.get_node
