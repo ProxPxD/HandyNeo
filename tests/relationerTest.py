@@ -3,7 +3,6 @@ import random
 from collections import ChainMap, namedtuple
 from functools import reduce
 from itertools import product, chain
-from random import random
 
 from py2neo import Node, Relationship
 
@@ -137,7 +136,7 @@ class RelationerTest(AbstractTest):
                         self.assertTrue(is_name_in if r_confs.name_as_label else not is_name_in)
                         for higher_label in higher_node.labels:
                             is_label_in = higher_label in child.labels
-                            self.assertTrue(is_label_in if r_confs.name_as_label else not is_label_in)
+                            self.assertTrue(is_label_in if r_confs.labels_inherit else not is_label_in)
 
             RR.clean_children()
             NN.clean_children()
