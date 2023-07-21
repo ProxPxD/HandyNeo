@@ -7,9 +7,9 @@ from tests.relationTest import RelationTest
 from tests.relationerTest import RelationerTest
 
 all_tests = [
-    # SimpleNodeTest,
-    # RelationTest,
-    RelationerTest,
+    SimpleNodeTest,
+    RelationTest,
+    # RelationerTest,
 ]
 
 
