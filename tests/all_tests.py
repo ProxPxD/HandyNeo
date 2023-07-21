@@ -9,7 +9,7 @@ from tests.relationerTest import RelationerTest
 all_tests = [
     SimpleNodeTest,
     RelationTest,
-    # RelationerTest,
+    RelationerTest,
 ]
 
 
