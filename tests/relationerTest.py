@@ -20,11 +20,11 @@ class RelationerTest(AbstractTest):
     is_generated = False
     params = {}
     random_test_percentage = .6
-    conf_percentage = .000_0080  # 0.000_050
+    conf_percentage = .000_070  # 0.000_050
     arg_percentage = .75
 
     restrictions = Restrictions(
-        reversed=False,
+        reversed=True,
         children=True,
         adding=True,
         labels=True,
