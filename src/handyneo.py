@@ -217,6 +217,7 @@ class Relationer:
     def __init__(self, change_name=False, **kwargs):
         super().__init__()
         self._n_call = 0
+        self._is_reversed_used = False
         self._node_vars = NodeVars()
         for key in (S.rel, S.labels_inherit, S.name_as_label):
             if key in kwargs:
@@ -245,13 +246,12 @@ class Relationer:
             if not node_var['is_constant']:
                 node_var['vals'] = None
 
-        if any((conf.reversed for conf in self._nabels_configs.values())) and any((conf.labels_inherit for conf in self._nabels_configs.values())):
-            if not self._n_call:
-                self._n_call += 1
-                self.__call__(*orig_labels, **named_nabels)
-            else:
-                self._n_call = 0
-
+        if self._is_reversed_used and not self._n_call:
+            self._n_call += 1
+            self.__call__(*orig_labels, **named_nabels)
+        else:
+            self._is_reversed_used = False
+            self._n_call = 0
 
     def get_confs(self, name: str) -> NabelConfig:
         return self._nabels_configs[name]
@@ -263,6 +263,7 @@ class Relationer:
         to_nabels: Nabels = self._node_vars.children.vals
         config = self._nabels_configs[nabels_type]
         rel_args = tuple(reversed((from_nabels, to_nabels))) if config.reversed else (from_nabels, to_nabels)
+        self._is_reversed_used |= config.reversed
         if not bool:
             return
         for from_nabel, to_nabel in product(*rel_args):
