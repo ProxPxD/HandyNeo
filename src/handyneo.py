@@ -60,7 +60,7 @@ class D:
     @classmethod
     def clean_children(cls):
         for val in cls.vals():
-            val.children = []
+            val.children = set()
 
     @classmethod
     def is_name_free(cls, name: str) -> bool:
@@ -102,7 +102,7 @@ class R(HasName):
 
         super().__init__(name=rel_name)
         self.rel: Type[Relationship] = Relationship.type(rel_name)
-        self.children: list[Relationship] = []
+        self.children: set[Relationship] = set()
         setattr(RR, rel_name, self)
 
     @property
@@ -112,7 +112,7 @@ class R(HasName):
     def get_rel(self) -> Type[Relationship]:
         return self.rel
 
-    def get_children(self) -> list[Relationship]:
+    def get_children(self) -> set[Relationship]:
         return self.children
 
     @classmethod
@@ -120,8 +120,9 @@ class R(HasName):
         return str(r).removeprefix("<class 'py2neo.data.").removesuffix("'>")
 
     def __call__(self, *args, **kwargs) -> Relationship:
-        r = self.rel(*tuple(map(lambda a: a.node if isinstance(a, N) else a, args)), **kwargs)
-        self.children.append(r)
+        args = tuple(map(lambda a: a.node if isinstance(a, N) else a, args))
+        r = self.rel(*args, **kwargs)
+        self.children.add(r)
         return r
 
     def __repr__(self):
@@ -183,6 +184,10 @@ class Filterer:
     def filter_labels_inherit(cls, to_filters: Iterable[str], kwargs: dict | bool = None) -> Iterable[str] | dict[str, Any]:
         return cls.filter_suffix(to_filters, S.labels_inherit, kwargs)
 
+    @classmethod
+    def filter_reversed(cls, to_filters: Iterable[str], kwargs: dict | bool = None) -> Iterable[str] | dict[str, Any]:
+        return cls.filter_suffix(to_filters, S.reversed, kwargs)
+
 
 @dataclass
 class NabelConfig(DictClass):
@@ -193,11 +198,11 @@ class NabelConfig(DictClass):
 
     @classmethod
     def make_from(cls, name: str, kwargs: dict, change_name=False, **defaults):
-        params = {param_name.removeprefix(f'{name}_'): param_value for param_name, param_value in kwargs.items() if name in param_name}
+        params = {param_name.removeprefix(f'{name}_'): param_value for param_name, param_value in kwargs.items() if name in param_name and param_value is not None}
         if S.rel in params and not isinstance(params[S.rel], (R, type(None))):
             params[S.rel] = R(params[S.rel], change_name=change_name)
         for default_key, default_value in defaults.items():
-            if default_key not in params:
+            if default_key not in params or (S.rel not in default_key and params[default_key] is None):
                 params[default_key] = default_value
         return NabelConfig(**params)
 
@@ -211,6 +216,7 @@ class Relationer:
     '''
     def __init__(self, change_name=False, **kwargs):
         super().__init__()
+        self._n_call = 0
         self._node_vars = NodeVars()
         for key in (S.rel, S.labels_inherit, S.name_as_label):
             if key in kwargs:
@@ -226,6 +232,7 @@ class Relationer:
             self._nabels_configs[unique_key] = NabelConfig.make_from(unique_key, kwargs, change_name=change_name)
 
     def __call__(self, *labels, **named_nabels: Nabel):
+        orig_labels = labels
         labels = list(map(lambda l: to_node(l, 2), labels))
         labels = self._node_vars.parents.set_first_from(labels)
         labels = self._node_vars.children.set_first_from(labels)
@@ -233,21 +240,29 @@ class Relationer:
         labels = list(l for label in filter(bool, labels) for l in (label if isinstance(label, (tuple, list)) else (label, )))
         self._rel(labels, S.unnamed)
         for nabels_type, nabels in named_nabels.items():
-            self._rel(save_iterabilize(nabels), nabels_type)
+            self._rel(list(map(to_node, save_iterabilize(nabels))), nabels_type)
         for node_var in self._node_vars.values():
             if not node_var['is_constant']:
                 node_var['vals'] = None
 
-    def get_rel_confs(self, name: str) -> NabelConfig:
+        if any((conf.reversed for conf in self._nabels_configs.values())) and any((conf.labels_inherit for conf in self._nabels_configs.values())):
+            if not self._n_call:
+                self._n_call += 1
+                self.__call__(*orig_labels, **named_nabels)
+            else:
+                self._n_call = 0
+
+
+    def get_confs(self, name: str) -> NabelConfig:
         return self._nabels_configs[name]
 
     def get_rel(self, name: str) -> R:
-        return self.get_rel_confs(name).rel
+        return self.get_confs(name).rel
 
     def _rel(self, from_nabels: Iterable[Node], nabels_type: str):
         to_nabels: Nabels = self._node_vars.children.vals
         config = self._nabels_configs[nabels_type]
-        rel_args = tuple(reversed((from_nabels, to_nabels))) if config.reversed else from_nabels, to_nabels
+        rel_args = tuple(reversed((from_nabels, to_nabels))) if config.reversed else (from_nabels, to_nabels)
         if not bool:
             return
         for from_nabel, to_nabel in product(*rel_args):
@@ -272,7 +287,7 @@ class N(HasName, dict):  # TODO dict was added for complience with save_iterazab
     def __init__(self, name: str, *labels: Nabel, relationer: Relationer = None, **named_nabels):
         super().__init__()
         self.node = Node(name=name)
-        self.children: list = []
+        self.children: set = set()
         self.relationer = relationer
         setattr(NN, name, self)
 
@@ -308,7 +323,7 @@ class N(HasName, dict):  # TODO dict was added for complience with save_iterazab
         name = name or '-'.join(map(lambda l: l if isinstance(l, str) else l.name, labels))
         n = N(name=name, relationer=self.relationer, **kwargs)
         self.relationer(self, n, *labels, **kwargs)
-        self.children.append(n)
+        self.children.add(n)
         return n
 
     def __getitem__(self, item) -> Any:
@@ -324,7 +339,7 @@ class N(HasName, dict):  # TODO dict was added for complience with save_iterazab
         return self.node.keys()
 
 
-def to_node(elem, n):
+def to_node(elem, n=1):
     if n == 0:
         return elem
     return elem.node if isinstance(elem, N) else list(map(lambda e: to_node(e, n-1), elem)) if isinstance(elem, (list, tuple)) else elem
@@ -332,6 +347,7 @@ def to_node(elem, n):
 
 def to_name(elem):
     return elem.name if isinstance(elem, N) else elem[S.name] if isinstance(elem, Node) else None
+
 
 RR._map_func = R.get_children
 NN._map_func = N.get_node
