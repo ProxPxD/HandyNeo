@@ -285,11 +285,21 @@ class Relationer:
 
 
 class N(HasName, dict):  # TODO dict was added for complience with save_iterazable, check if needed
+
+    _common_relationer = None
+    # @classmethod
+    # def set_with_id(cls, state: bool = True):
+    #     cls.with_id = state
+
+    @classmethod
+    def set_common_relationer(cls, relationer: Relationer):
+        cls._common_relationer = relationer
+
     def __init__(self, name: str, *labels: Nabel, relationer: Relationer = None, **named_nabels):
         super().__init__()
         self.node = Node(name=name)
         self.children: set = set()
-        self.relationer = relationer
+        self.relationer = relationer or self._common_relationer
         setattr(NN, name, self)
 
         bucketed = bucket(named_nabels, key=lambda nl: NabelConfig.map_to_contained_key(nl) is None)
