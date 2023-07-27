@@ -10,6 +10,9 @@ from py2neo import Node
 # General #
 ###########
 
+def to_name(instance):
+    return instance.name if 'name' in instance.__dir__ else instance['name'] if '__contains__' in instance.__dir__ and 'name' in instance else instance if isinstance(instance, str) else None
+
 
 def save_iterabilize(iterable: Iterable | None, default: Type | Callable = list) -> Iterable | Collection | list | tuple:
     iterable: Iterable = iterable or default()
