@@ -327,7 +327,7 @@ class N(HasName, dict):  # TODO dict was added for complience with save_iterazab
     def labels(self) -> set[str]:
         return self.node.labels
 
-    def get_labes(self) -> set[str]:
+    def get_labels(self) -> set[str]:
         return self.labels
 
     def __call__(self, name: str, *labels: str | N, **kwargs) -> N:
@@ -350,14 +350,23 @@ class N(HasName, dict):  # TODO dict was added for complience with save_iterazab
         return self.node.keys()
 
 
+class ChildMaker:
+    def __init__(self, func: Callable[[Any], Any], rel: Relationer = None):
+        self.func = func
+        self.rel = rel
+
+    def __call__(self, parents, *args, **kwargs):
+        parents = save_iterabilize(parents, tuple)
+        children = self.func(parents)
+        if self.rel:
+            self.rel(parents, children, *args, **kwargs)
+        return children
+
+
 def to_node(elem, n=1):
     if n == 0:
         return elem
     return elem.node if isinstance(elem, N) else list(map(lambda e: to_node(e, n-1), elem)) if isinstance(elem, (list, tuple)) else elem
-
-
-def to_name(elem):
-    return elem.name if isinstance(elem, N) else elem[S.name] if isinstance(elem, Node) else None
 
 
 RR._map_func = R.get_children
