@@ -11,6 +11,12 @@ class RelationTest(AbstractTest):
 
     nodes = {node.name: node for node in (N('Ania'), N('Phil'), N('Kate'), N('Yuan'))}
 
+    def setUp(self) -> None:
+        RR.clear()
+
+    def tearDown(self) -> None:
+        RR.clear()
+
     @parameterized.expand([
         ('N_N', 'knows', [(nodes['Ania'], nodes['Phil'])]),
         ('Node_Node', 'knows', [(nodes['Ania'].node, nodes['Phil'].node)]),
@@ -19,6 +25,7 @@ class RelationTest(AbstractTest):
     ])
     def test_relation_creation(self, test_name: str, r_name: str, node_pairs: Iterable[tuple[N | Node, N | Node]]):
         r = R(r_name, change_name=True)
+        self.assertEqual(len(RR.vals()), 1)
         self.assertIn(r_name, r.name)
         self.assertIn(r_name, RR.dir())
         self.assertIn(r, RR.vals())

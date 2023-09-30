@@ -11,16 +11,28 @@ from py2neo import Node
 ###########
 
 def to_name(instance):
-    return instance.name if 'name' in instance.__dir__ else instance['name'] if '__contains__' in instance.__dir__ and 'name' in instance else instance if isinstance(instance, str) else None
+    try:
+        return instance.name
+    except:
+        try:
+            return instance['name']
+        except:
+            return str(instance)
 
 
 def save_iterabilize(iterable: Iterable | None, default: Type | Callable = list) -> Iterable | Collection | list | tuple:
-    iterable: Iterable = iterable or default()
+    iterable: Iterable = iterable if iterable or isinstance(iterable, (str, dict)) else default()
     if isinstance(iterable, (str, dict)):
         iterable = (iterable, )
     if not isinstance(iterable, default):
         iterable = default(iterable)
     return iterable
+
+
+def save_flatten(iterable: Any, default: Type | Callable = list, map_func: Callable = lambda x: x) -> Iterable:
+    if not isinstance(iterable, Iterable) or isinstance(iterable, (str, dict)):
+        return save_iterabilize(map_func(iterable), default)
+    return default((last_layer for first_layer in iterable for last_layer in save_flatten(first_layer, list, map_func=map_func)))
 
 
 def reapply(fn, arg, n=None, until=None, as_long=None):
@@ -42,7 +54,10 @@ class DictClass:
         print('To verify: ',  self.__dict__)
         return self.__dict__.__setitem__(key, value)
 
-    dict: Callable[[], dict] = asdict
+    def dict(self):
+        return {key:val for key, val in self.__dict__.items() if not key.startswith('_')}
+
+    #dict: Callable[[], dict] = asdict
     values: Callable[[], Any] = lambda self: self.dict().values()
     keys: Callable[[], Any] = lambda self: self.dict().keys()
     items: Callable[[], Any] = lambda self: self.dict().items()

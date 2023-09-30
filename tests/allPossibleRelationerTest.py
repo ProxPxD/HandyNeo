@@ -7,8 +7,8 @@ from itertools import product, chain
 
 from py2neo import Node, Relationship
 
-from src.handyneo import Relationer, R, S, Filterer, RR, N, NN, to_name, to_node
-from src.utils import save_iterabilize
+from src.handyneo import Relationer, R, S, Filterer, RR, N, NN, to_node
+from src.utils import save_iterabilize, to_name
 from tests.abstractTest import AbstractTest
 
 
@@ -16,7 +16,7 @@ restriction_names = ['reversed', 'children', 'adding', 'labels']
 Restrictions = namedtuple('Restrictions', restriction_names, defaults=(False, ) * len(restriction_names))
 
 
-class RelationerTest(AbstractTest):
+class AllPossibleRelationerTest(AbstractTest):
     is_generated = False
     params = {}
     random_test_percentage = .6
@@ -35,7 +35,10 @@ class RelationerTest(AbstractTest):
     rel_vals = (lambda name: R(name, True), lambda name: Relationship.type(name))
     bool_vals = (True, False, None)
 
-    classes = (lambda name, labels: N(name, *list(map(lambda l: l + f'---{name}', labels))), lambda name, labels: Node(*list(map(lambda l: l + f'---{name}', labels)), name=name))
+    classes = (
+        lambda name, labels: N(name, *list(map(lambda l: l + f'---{name}', labels))),
+        lambda name, labels: Node(*list(map(lambda l: l + f'---{name}', labels)), name=name)
+    )
     all_labels = (tuple(), ('A', 'B', 'C'))
     all_node_names = (tuple(), ('1', ), ('1', '2', '3'))
     node_types = (*main_types, S.children)
@@ -45,15 +48,15 @@ class RelationerTest(AbstractTest):
         self.test_confs = None
         self.test_args = None
         if not self.is_generated:
-            RelationerTest.params = {
+            AllPossibleRelationerTest.params = {
                 **{f'{main_type}_{sec_type}': [{f'{main_type}_{sec_type}': val} for val in (self.bool_vals if sec_type != S.rel else ([c(f'{main_type}_{sec_type}') for c in self.rel_vals] + [None]))]\
                    for main_type in self.main_types for sec_type in self.sec_types},
                 **{node_type: [{node_type: tuple((c(node_type[0] + node_name + f'_{random.random()}', labels) for node_name in node_names)) if len(node_names) != 1 else c(node_type[0] + node_names[0] + f'_{random.random()}', labels)} for c in self.classes for node_names in self.all_node_names for labels in self.all_labels if not (labels and (not node_names or node_type == S.children))] \
                    for node_type in self.node_types},
             }
 
-            RelationerTest.gen_all_relationer_tests()
-            RelationerTest.is_generated = True
+            AllPossibleRelationerTest.gen_all_relationer_tests()
+            AllPossibleRelationerTest.is_generated = True
 
     @classmethod
     def gen_all_relationer_tests(cls):
@@ -81,7 +84,7 @@ class RelationerTest(AbstractTest):
             test_name += reduce(op.add, ((f'_and_{key}_labels' if arg_sample[key] and save_iterabilize(arg_sample[key])[0].labels else '') for key in cls.main_types), '')
             test_name = test_name.replace('_and_', '', 1).lower()
             test = cls.gen_relationer_test(test_name, conf_sample, arg_sample)
-            setattr(RelationerTest, test_name, test)
+            setattr(AllPossibleRelationerTest, test_name, test)
 
     @classmethod
     def gen_relationer_test(cls, test_name, confs: dict[str, R | bool | None], args: dict):
@@ -90,17 +93,19 @@ class RelationerTest(AbstractTest):
             self.test_args = args.copy()
             relationer = Relationer(change_name=True, **confs)
             orig_args = args.copy()
-            parents = args.get(S.parents)
-            children = args.get(S.children)
-            unnamed = args.get(S.unnamed)
+            parents_arg = args.get(S.parents)
+            children_arg = args.get(S.children)
+            unnamed_arg = args.get(S.unnamed)
             to_list = lambda a: [a] if a else [None]
-            positional_args = to_list(parents) + to_list(children) + to_list(unnamed)
+            positional_args = to_list(parents_arg) + to_list(children_arg) + to_list(unnamed_arg)
+
+            children = save_iterabilize(children_arg)
 
             rs = Filterer.filter_rel(confs, True)
             nals = Filterer.filter_name_as_labels(confs, True)
             lis = Filterer.filter_labels_inherit(confs, True)
             revs = Filterer.filter_reversed(confs, True)
-            all_ns = args | {S.parents: parents, S.children: children, S.unnamed: unnamed}
+            all_ns = args | {S.parents: parents_arg, S.children: children_arg, S.unnamed: unnamed_arg}
             for r_type, nodes in all_ns.items():
                 if r_type == S.children:
                     continue
@@ -116,11 +121,9 @@ class RelationerTest(AbstractTest):
                 if revs[f'{r_type}_{S.reversed}'] is not None:
                     self.assertEqual(r_confs.reversed, revs[f'{r_type}_{S.reversed}'])
 
-            for key in (S.parents, S.children, S.unnamed):
-                if key in args:
-                    del args[key]
+            kwargs = {node_type: nodes for node_type, nodes in args.items() if node_type not in (S.parents, S.children, S.unnamed)}
 
-            relationer(*positional_args, **args)
+            relationer(args.get(S.parents), args.get(S.children), unnamed_arg, **kwargs)
 
             for name, r in rs.items():
                 if not r:
@@ -131,12 +134,12 @@ class RelationerTest(AbstractTest):
 
                 self.assertTrue(r_confs.rel.name.startswith(name))
                 self.assertEqual(r_confs.rel, RR.get(r_confs.rel.name))
-                children = save_iterabilize(children)
-                if children and r_type in all_ns:
+                children_arg = save_iterabilize(children_arg)
+                if children_arg and r_type in all_ns:
                     t = test_name
                     self.assertEqual(len(higher_nodes)*len(children), len(r_confs.rel.children))
                     start_col = list(map(to_name, higher_nodes))
-                    end_col = list(map(to_name, children))
+                    end_col = list(map(to_name, children_arg))
                     if r_confs.reversed:
                         start_col, end_col = end_col, start_col
                     for child_rel in r_confs.rel.children:

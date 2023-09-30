@@ -1,15 +1,17 @@
 import unittest
 from typing import Iterable
 
+from tests.relationer_test import RelationerTest
 from tests.SimpleNodeTest import SimpleNodeTest
 from tests.abstractTest import AbstractTest
 from tests.relationTest import RelationTest
-from tests.relationerTest import RelationerTest
+from tests.allPossibleRelationerTest import AllPossibleRelationerTest
 
 all_tests = [
     SimpleNodeTest,
     RelationTest,
-    RelationerTest,
+    AllPossibleRelationerTest,
+    # RelationerTest,
 ]
 
 
