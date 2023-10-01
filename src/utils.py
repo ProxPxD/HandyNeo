@@ -29,7 +29,7 @@ def save_iterabilize(iterable: Iterable | None, default: Type | Callable = list)
     return iterable
 
 
-def save_flatten(iterable: Any, default: Type | Callable = list, map_func: Callable = lambda x: x) -> Iterable:
+def save_flatten(iterable: Any, default: Type | Callable = list, map_func: Callable = lambda x: x) -> Iterable | Collection | list | tuple:
     if not isinstance(iterable, Iterable) or isinstance(iterable, (str, dict)):
         return save_iterabilize(map_func(iterable), default)
     return default((last_layer for first_layer in iterable for last_layer in save_flatten(first_layer, list, map_func=map_func)))

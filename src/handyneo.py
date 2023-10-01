@@ -5,7 +5,7 @@ import random
 from dataclasses import dataclass, field
 from functools import reduce
 from itertools import product, tee
-from typing import Callable, Iterable, Type, Tuple, Any
+from typing import Callable, Iterable, Type, Tuple, Any, Optional
 
 from more_itertools import bucket, unique_everseen
 from py2neo import Graph, Relationship, Node
@@ -209,12 +209,22 @@ class NabelConfig(DictClass):
     @classmethod
     def make_from(cls, name: str, kwargs: dict, change_name=False, **defaults):
         params = {param_name.removeprefix(f'{name}_'): param_value for param_name, param_value in kwargs.items() if name in param_name and param_value is not None}
+        params = cls._replace_strings_with_relationships(params, change_name)
+        params = cls._fill_defaults(params, defaults)
+        return NabelConfig(**params)
+
+    @classmethod
+    def _replace_strings_with_relationships(cls, params: dict, change_name):
         if S.rel in params and not isinstance(params[S.rel], (R, type(None))):
             params[S.rel] = R(params[S.rel], change_name=change_name)
+        return params
+
+    @classmethod
+    def _fill_defaults(cls, params: dict, defaults: dict):
         for default_key, default_value in defaults.items():
             if default_key not in params or (S.rel not in default_key and params[default_key] is None):
                 params[default_key] = default_value
-        return NabelConfig(**params)
+        return params
 
     @classmethod
     def extract_nabels_configs(cls, kwargs: dict, change_name: bool) -> dict[str, NabelConfig]:
@@ -260,8 +270,10 @@ class NabelConfig(DictClass):
 class Relationer:
     '''
         [NAME]_rel, [NAME]_labels_inherit, [NAME]_name_as_label
+        [NAME] is parents, unnamed, ...
+        parent_labels_inherit is true as for default
     '''
-    def __init__(self, *labels, change_name=False, **kwargs):
+    def __init__(self, *, change_name=False, **kwargs):
         super().__init__()
         self._n_call = 0
         self._is_reversed_used = False
@@ -336,20 +348,11 @@ class Relationer:
 
 class N(HasName, dict):  # TODO dict was added for complience with save_iterazable, check if needed
 
-    _common_relationer = None
-    # @classmethod
-    # def set_with_id(cls, state: bool = True):
-    #     cls.with_id = state
-
-    @classmethod
-    def set_common_relationer(cls, relationer: Relationer):
-        cls._common_relationer = relationer
-
     def __init__(self, name: str, *labels: Nabel, relationer: Relationer = None, **named_nabels):
         super().__init__()
         self.node = Node(name=name)
         self.children: set = set()
-        self.relationer = relationer or self._common_relationer
+        self.relationer = relationer
         setattr(NN, name, self)
 
         bucketed = bucket(named_nabels, key=lambda nl: NabelConfig.map_to_contained_key(nl) is None)
@@ -362,9 +365,10 @@ class N(HasName, dict):  # TODO dict was added for complience with save_iterazab
         else:
             self.node.update_labels(list(col_to_str(labels)))
 
-    def add_kwargs(self, kwargs: dict) -> None:
+    def add_kwargs(self, kwargs: dict) -> N:
         for key, val in kwargs.items():
             self.node[key] = val
+        return self
 
     @property
     def name(self) -> str:
@@ -401,12 +405,12 @@ class N(HasName, dict):  # TODO dict was added for complience with save_iterazab
 
 
 class NodeMaker:
-    def __init__(self, *labels: str, relationer: Relationer = None, func: Callable[[Any], N_potcol] = None):
+    def __init__(self, *labels: str, relationer: Optional[Relationer] = None, func: Callable[[Any], N_potcol] = None):
         self.labels = labels
         self.rel: Relationer = relationer
         self.func: Callable[[Any], N_potcol] = func
 
-    def __call__(self, name: str, parents: NabelSome, *unnamed, additional_labels=None, **named_nabels: NabelSome) -> N:
+    def __call__(self, name: str, parents: NabelSome = None, *unnamed, additional_labels=None, **named_nabels: NabelSome) -> N:
         additional_labels = additional_labels or []
         n = N(name, *self.labels, *additional_labels)
         if self.rel:
