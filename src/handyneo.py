@@ -424,21 +424,9 @@ class NodeMaker:
         return ns
 
 
-class ChildMaker:
-    def __init__(self, func: Callable[[Any], Any], rel: Relationer = None):
-        self.func = func
-        self.rel = rel
-
-    def __call__(self, parents, *args, **kwargs):
-        parents = save_iterabilize(parents, tuple)
-        children = self.func(parents)
-        if self.rel:
-            self.rel(parents, children, *args, **kwargs)
-        return children
-
-
 def to_node(elem):
     return elem.node if isinstance(elem, N) else elem
+
 
 RR._map_func = R.get_children
 NN._map_func = N.get_node
