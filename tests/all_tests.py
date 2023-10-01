@@ -1,6 +1,7 @@
 import unittest
 from typing import Iterable
 
+from tests.node_maker_test import NodeMakerTest
 from tests.relationer_test import RelationerTest
 from tests.SimpleNodeTest import SimpleNodeTest
 from tests.abstractTest import AbstractTest
@@ -12,6 +13,7 @@ all_tests = [
     RelationTest,
     AllPossibleRelationerTest,
     # RelationerTest,
+    NodeMakerTest,
 ]
 
 
