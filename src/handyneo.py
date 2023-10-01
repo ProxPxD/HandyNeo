@@ -380,7 +380,7 @@ class N(HasName, dict):  # TODO dict was added for complience with save_iterazab
     def get_labels(self) -> set[str]:
         return self.labels
 
-    def __call__(self, name: str, *labels: str | N, **kwargs) -> N:
+    def __call__(self, name: str, *labels: str | N, **kwargs) -> N:  # TODO rethink
         name = name or '-'.join(map(lambda l: l if isinstance(l, str) else l.name, labels))
         n = N(name=name, relationer=self.relationer, **kwargs)
         self.relationer(self, n, *labels, **kwargs)
@@ -398,6 +398,30 @@ class N(HasName, dict):  # TODO dict was added for complience with save_iterazab
 
     def keys(self) -> Iterable:
         return self.node.keys()
+
+
+class NodeMaker:
+    def __init__(self, *labels: str, relationer: Relationer = None, func: Callable[[Any], N_potcol] = None):
+        self.labels = labels
+        self.rel: Relationer = relationer
+        self.func: Callable[[Any], N_potcol] = func
+
+    def __call__(self, name: str, parents: NabelSome, *unnamed, additional_labels=None, **named_nabels: NabelSome) -> N:
+        additional_labels = additional_labels or []
+        n = N(name, *self.labels, *additional_labels)
+        if self.rel:
+            self.rel(parents, n, *unnamed, **named_nabels)
+        return n
+
+    def from_parents(self, parents: NabelSome, *unnamed, additional_labels=None, **named_nabels: NabelSome) -> tuple[N]:
+        if not self.func:
+            raise ValueError
+        ns = save_iterabilize(self.func(parents), tuple)
+        for n in ns:
+            n.node.update_labels(additional_labels or [])
+        if self.rel:
+            self.rel(parents, ns, *unnamed, **named_nabels)
+        return ns
 
 
 class ChildMaker:
