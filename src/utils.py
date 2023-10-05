@@ -46,7 +46,7 @@ def reapply(fn, arg, n=None, until=None, as_long=None):
     return arg
 
 
-class DictClass:
+class DictClass:  # TODO: the whole concept, think of replacing with new python 3.12 dictclass functionality
     def __getitem__(self, item):
         return self.__dict__[item]
 
