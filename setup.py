@@ -8,7 +8,7 @@ readme_path = main_dir / "README.md"
 LONG_DESCRIPTION = readme_path.read_text() if readme_path.exists() else 'LONG DESCRIPTION'
 
 
-VERSION = '0.0.9'
+VERSION = '0.0.10'
 DESCRIPTION = 'Facade for neo4j to create nodes and relationships in a more robust way'
 
 # Setting up
