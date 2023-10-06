@@ -1,1 +1,1 @@
-from .handyneo import R, N, Relationer, NodeMaker
+from .handyneo import R, RR, N, NN, Relationer, NodeMaker
